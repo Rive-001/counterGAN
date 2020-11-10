@@ -4,7 +4,9 @@ import torch.optim as optim
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 import torch.utils.data as data
+from model import *
 num_workers = 4
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 ##Load Datasets
 trans = {}
@@ -27,6 +29,8 @@ Datasets['test'] = datasets.CIFAR10(
     root='./',train=False,transform=trans['test'],download=True
 )
 
-dataloaders = {x:data.DataLoaders(Datasets[x], shuffle=True, batch_size=32, num_workers=num_workers) for x in ['train','test']}
+dataloaders = {x:data.DataLoader(Datasets[x], shuffle=True, batch_size=32, num_workers=num_workers) for x in ['train','test']}
 
 
+cgan = counterGAN(device)
+cgan.train(0,1,dataloaders)

@@ -59,22 +59,23 @@ class Discriminator(nn.Module):
 
 
 class counterGAN():
-    def __init__(device):
+    def __init__(self,device):
         
         self.nz = 100
         self.beta1 = 0.5
         self.real_label = 1
         self.fake_label = 0
+        self.device = device
 
-        self.netG = Generator(self.nz).to(device)
-        self.netD = Discriminator().to(device)
+        self.netG = Generator(self.nz).to(self.device)
+        self.netD = Discriminator().to(self.device)
 
-        self.optimizerG = optim.Adam(self.netG.parameters(), lr=2e-4, betas=(beta1,0.999))
-        self.optimizerD = optim.Adam(self.netD.parameters(), lr=2e-4, betas=(beta1,0.999))
+        self.optimizerG = optim.Adam(self.netG.parameters(), lr=2e-4, betas=(self.beta1,0.999))
+        self.optimizerD = optim.Adam(self.netD.parameters(), lr=2e-4, betas=(self.beta1,0.999))
         self.criterion = nn.BCELoss()
 
 
-    def train(init_epoch, num_epochs,dataloader):
+    def train(self,init_epoch, num_epochs,dataloader):
 
         G_losses = []
         D_losses = []
@@ -85,9 +86,9 @@ class counterGAN():
                 #Train Discriminator on real image
                 self.netD.zero_grad()
 
-                image = D[0].to(device)
+                image = D[0].to(self.device)
                 batch_size = image.size()[0]
-                label = torch.full((batch_size,),self.real_label,dtype=torch.float,device=device)
+                label = torch.full((batch_size,),self.real_label,dtype=torch.float,device=self.device)
 
                 out_real = self.netD(image).view(-1)
                 loss_d_real = self.criterion(out_real,label)
@@ -96,7 +97,7 @@ class counterGAN():
                 D_x = out_real.mean().item()
 
                 #Train Discriminator on generated images
-                noise = torch.randn(batch_size,self.nz,1,1,device=device)
+                noise = torch.randn(batch_size,self.nz,1,1,device=self.device)
 
                 generated = self.netG(noise)
                 label.fill_(self.fake_label)

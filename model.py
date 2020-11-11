@@ -4,6 +4,7 @@ import torch.optim as optim
 import torchvision.datasets as datasets
 import torch.utils.data as data
 from vgg import VGG
+from torch.autograd import Variable
 
 
 class Generator(nn.Module):
@@ -66,17 +67,46 @@ class counterGAN():
         self.beta1 = 0.5
         self.real_label = 1
         self.fake_label = 0
+        self.L = 100
         self.device = device
 
         self.netG = Generator(self.nz).to(self.device)
         self.netD = Discriminator().to(self.device)
         self.netTarget = VGG('VGG16').to(self.device)
+        self.netTarget.load_state_dict(torch.load('BestClassifierModel.pth'))
+
+        self.netG.apply(self.weights_init)
+        self.netD.apply(self.weights_init)
 
         self.optimizerG = optim.Adam(self.netG.parameters(), lr=2e-4, betas=(self.beta1,0.999))
         self.optimizerD = optim.Adam(self.netD.parameters(), lr=2e-4, betas=(self.beta1,0.999))
         self.criterion = nn.BCELoss()
         self.criterionTarget = nn.CrossEntropyLoss()
 
+    def weights_init(self,m):
+        classname = m.__class__.__name__
+        if classname.find('Conv') != -1:
+            nn.init.normal_(m.weight.data, 0.0, 0.02)
+
+    def save_state_dicts(self,path):
+        
+        torch.save({
+            'netG_state_dict':self.netG.state_dict(),
+            'netD_state_dict':self.netD.state_dict(),
+            'optimizerG_state_dict':self.optimizerG.state_dict(),
+            'optimizerD_state_dict':self.optimizerD.state_dict()
+        },path)
+        
+        # print('Saved state dicts')
+
+    def load_state_dicts(self,path):
+        
+        self.netG.load_state_dict(torch.load(path)['netG_state_dict'])
+        self.netD.load_state_dict(torch.load(path)['netD_state_dict'])
+        self.optimizerG.load_state_dict(torch.load(path)['optimizerG_state_dict'])
+        self.optimizerD.load_state_dict(torch.load(path)['optimizerD_state_dict'])
+
+        print('Loaded state dicts')
 
     def train(self,init_epoch, num_epochs,dataloader):
 
@@ -87,6 +117,8 @@ class counterGAN():
 
         for epoch in range(init_epoch,num_epochs):
             for idx,D in enumerate(dataloader['train']):
+                self.netG.train()
+                self.netD.train()
                 
                 #Train Discriminator on real image
                 self.netD.zero_grad()
@@ -108,14 +140,18 @@ class counterGAN():
                 generated = self.netG(noise)
                 label.fill_(self.fake_label)
 
-                out_generated = self.netD(generated.detach()+image).view(-1)
+                out_generated = self.netD(generated.detach()).view(-1)
                 loss_d_generated = self.criterion(out_generated,label)
                 loss_d_generated.backward()
 
                 D_G_z1 = out_generated.mean().item()
 
                 loss_d = loss_d_generated+loss_d_real
-                self.optimizerD.step()
+
+                if idx%30==0:
+                    self.optimizerD.step()
+                else:
+                    self.optimizerD.zero_grad()
 
                 #Train Generator
                 self.netG.zero_grad()
@@ -123,11 +159,11 @@ class counterGAN():
 
                 label.fill_(self.real_label)
 
-                out_generated_2 = self.netD(generated+image).view(-1)
+                out_generated_2 = self.netD(generated).view(-1)
                 loss_g = self.criterion(out_generated_2,label)
                 loss_g.backward(retain_graph=True)
 
-                out_classifier = self.netTarget(generated+image)
+                out_classifier = self.netTarget(generated)
                 loss_c = self.criterionTarget(out_classifier,target_labels)
                 loss_c.backward()
 
@@ -147,5 +183,28 @@ class counterGAN():
                 T_losses.append(loss_c.item())
                 Losses.append(loss.item())
 
+                if loss==min(Losses):
+                    self.save_state_dicts('BestcounterGAN.pth')
+
         return D_losses,G_losses
+
+    def infer(self,x):
+        
+        batch_size_z = x.size()[0]
+        noise = torch.randn(batch_size_z,self.nz,1,1,device=self.device)
+        optimizer_z = optim.SGD([noise.requires_grad_()], lr=0.1)
+        criterion_z = nn.MSELoss()
+
+        for l in range(self.L):
+            optimizer_z.zero_grad()
+            out_z = self.netG(noise)
+            loss_z = criterion_z(out_z,x)
+            loss_z.backward()
+            optimizer_z.step()
+
+        return self.netG(noise)
+
+        
+
+
 

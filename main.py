@@ -33,19 +33,20 @@ Datasets['test'] = datasets.CIFAR10(
     root='./',train=False,transform=trans['test'],download=True
 )
 
-dataloaders = {x:data.DataLoader(Datasets[x], shuffle=True, batch_size=32, num_workers=num_workers) for x in ['train','test']}
+dataloaders = {x:data.DataLoader(Datasets[x], shuffle=True, batch_size=256, num_workers=num_workers) for x in ['train','test']}
 
 
 cgan = counterGAN(device)
-# cgan.train(0,5,dataloaders)
+D_losses,G_losses,img_list = cgan.train(0,50,dataloaders)
+cgan.visualize_images(img_list)
 
-cgan.load_state_dicts('BestcounterGAN.pth')
+# cgan.load_state_dicts('BestcounterGAN.pth')
 
-x = next(iter(dataloaders['test']))
-x_out = cgan.infer(x[0].to(device))
+# x = next(iter(dataloaders['test']))
+# x_out = cgan.infer(x[0].to(device))
 
-imgs_grid = make_grid(x_out)
+# imgs_grid = make_grid(x_out)
 
-fig = plt.figure()
-imgs_grid = np.transpose(imgs_grid.cpu().detach().numpy(), (1,2,0))
-plt.imsave('Img1.png',imgs_grid)
+# fig = plt.figure()
+# imgs_grid = np.transpose(imgs_grid.cpu().detach().numpy(), (1,2,0))
+# plt.imsave('Img1.png',imgs_grid)

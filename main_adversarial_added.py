@@ -5,7 +5,7 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torchvision.utils import make_grid
 import torch.utils.data as data
-from model import *
+from model_adversarial_added import *
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
@@ -39,8 +39,8 @@ dataloaders = {x:data.DataLoader(Datasets[x], shuffle=True, batch_size=256, num_
 
 #Load Adverserial datasets
 
-traindir = "baseline_adv2/baseline_adv2/train"
-validdir = "baseline_adv2/baseline_adv2/dev"
+traindir = "./baseline_adv2/train"
+validdir = "./baseline_adv2/dev"
 
 data = {
     'train':
@@ -61,9 +61,9 @@ dataloaders_adv = {
 
 
 cgan = counterGAN(device)
-D_losses,G_losses,img_list = cgan.train(0,50,dataloaders,dataloaders_adv)
+D_losses, G_losses, img_list_adv, img_list_real = cgan.train(0,50,dataloaders,dataloaders_adv)
 #D_losses,G_losses,img_list = cgan.train(0,50,dataloaders)
-cgan.visualize_images(img_list)
+# cgan.visualize_images(img_list_adv, )
 
 # cgan.load_state_dicts('BestcounterGAN.pth')
 

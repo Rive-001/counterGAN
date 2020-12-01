@@ -17,8 +17,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ##Load Datasets
 trans = {}
 trans['train'] = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(),
+    # transforms.RandomCrop(32, padding=4),
+    # transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
@@ -35,7 +35,8 @@ Datasets['test'] = datasets.CIFAR10(
     root='./',train=False,transform=trans['test'],download=True
 )
 
-dataloaders = {x:data.DataLoader(Datasets[x], shuffle=True, batch_size=256, num_workers=num_workers) for x in ['train','test']}
+BATCH_SIZE = 784
+dataloaders = {x:data.DataLoader(Datasets[x], shuffle=True, batch_size=BATCH_SIZE, num_workers=num_workers) for x in ['train','test']}
 
 #Load Adverserial datasets
 
@@ -48,10 +49,11 @@ data = {
     'test':
     datasets.ImageFolder(root=validdir, transform=trans['test'])
 }
+
 # Dataloader iterators, make sure to shuffle
 dataloaders_adv = {
-    'train': DataLoader(data['train'], batch_size=256, shuffle=True,num_workers=num_workers),
-    'test': DataLoader(data['test'], batch_size=256, shuffle=True,num_workers=num_workers)
+    'train': DataLoader(data['train'], batch_size=BATCH_SIZE, shuffle=True,num_workers=num_workers),
+    'test': DataLoader(data['test'], batch_size=BATCH_SIZE, shuffle=True,num_workers=num_workers)
 }
     
 
@@ -61,7 +63,7 @@ dataloaders_adv = {
 
 
 cgan = counterGAN(device)
-D_losses, G_losses, img_list_adv, img_list_real = cgan.train(0,50,dataloaders,dataloaders_adv)
+D_losses, G_losses, img_list_adv, img_list_real = cgan.train(0,100,dataloaders,dataloaders_adv)
 #D_losses,G_losses,img_list = cgan.train(0,50,dataloaders)
 # cgan.visualize_images(img_list_adv, )
 

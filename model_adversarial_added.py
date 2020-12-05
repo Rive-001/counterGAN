@@ -195,20 +195,22 @@ class counterGAN():
                 loss_c = self.criterionTarget(out_classifier,target_labels_adv)
                 # loss_c.backward()
 
-                # D_G_z2 -> output of the discriminator for generated images. Between (0,1)
-                D_G_z2 = out_generated_2.mean().item()
+                
 
                 # Calculate norm of noise generated
                 loss_p = self.criterionPerturbation(image,generated)
 
                 # loss -> final loss
-                loss = loss_d+(loss_c*loss_c)+loss_g-loss_p
+                loss = loss_d+(10*loss_c)+loss_g-loss_p
                 loss.backward()
-                self.optimizerD.step()
                 self.optimizerG.step()
-
+                if idx%5==0 and idx!=0:
+                    # update the Discriminator every 5th step
+                    self.optimizerD.step()
                 # self.optimizerG.step()
 
+                # D_G_z2 -> output of the discriminator for generated images. Between (0,1)
+                D_G_z2 = out_generated_2.mean().item()
                 if idx%50==0:
                     print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tLoss_C: %.4f\tLoss_P: %.4f\tOverall loss: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
                   % (epoch, num_epochs, idx, len(dataloaders['train']),

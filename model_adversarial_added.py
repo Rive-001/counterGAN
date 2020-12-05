@@ -14,20 +14,20 @@ class Generator(nn.Module):
     def __init__(self, nz):
         super(Generator,self).__init__()
         self.main = nn.Sequential(
-            #Output size: (256,9,9)
-            nn.ConvTranspose2d(nz,256,9,1,bias=False),
-            nn.ReLU(inplace=False),
-
-            #Output size: (128,17,17)
-            nn.ConvTranspose2d(256,128,9,1,bias=False),
-            nn.ReLU(inplace=False),
-
-            #Output size: (64,25,25)
-            nn.ConvTranspose2d(128,64,9,1,bias=False),
+            #Output size: (64,16,16)
+            nn.ConvTranspose2d(nz,64,16,1,bias=False),
             nn.ReLU(inplace=False),
 
             #Output size: (3,32,32)
-            nn.ConvTranspose2d(64,3,8,1,bias=False),
+            nn.ConvTranspose2d(64,3,17,1,bias=False),
+            # nn.ReLU(inplace=False),
+
+            #Output size: (64,25,25)
+            # nn.ConvTranspose2d(128,64,9,1,bias=False),
+            # nn.ReLU(inplace=False),
+
+            #Output size: (3,32,32)
+            # nn.ConvTranspose2d(64,3,8,1,bias=False),
             nn.Sigmoid()
         )
 
@@ -41,20 +41,20 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.main = nn.Sequential(
             
-            #Output size: (64,14,14)
-            nn.Conv2d(3,64,5,2),
+            #Output size: (64,11,11)
+            nn.Conv2d(3,64,11,2),
             nn.LeakyReLU(0.2, inplace=False),
 
-            #Output size: (128,5,5)
-            nn.Conv2d(64,128,5,2),
+            #Output size: (128,1,1)
+            nn.Conv2d(64,128,11,2),
             nn.LeakyReLU(0.2, inplace=False),
 
             #Output size: (256,1,1)
-            nn.Conv2d(128,256,5,2),
-            nn.LeakyReLU(0.2, inplace=False),
+            # nn.Conv2d(128,256,5,2),
+            # nn.LeakyReLU(0.2, inplace=False),
 
             nn.Flatten(),
-            nn.Linear(256,1),
+            nn.Linear(128,1),
             nn.Sigmoid()
         )
 
@@ -254,12 +254,19 @@ class counterGAN():
 
         return
 
-    def inference(self, images, fixed_noise=self.fixed_noise):
+    def inference(self, images, fixed_noise):
+        '''
+        Parameters:
+        images -> input images Tensor(64,3,32,32)
+        fixed_noise -> fixed noise (64,100,1,1)
 
-        generated = (self.netG(self.fixed_noise)+images).detach().cpu().tolist()
+        Returns:
+        generated -> generated images Tensor(64,3,32,32)
+        '''
+
+        generated = (self.netG(self.fixed_noise)+images).detach().cpu()
 
         return generated
-
 
 
         

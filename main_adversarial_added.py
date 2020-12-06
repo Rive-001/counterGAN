@@ -1,4 +1,5 @@
 import torch
+torch.manual_seed(0)
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.datasets as datasets
@@ -12,6 +13,8 @@ from torch.utils.data import Dataset, DataLoader
 torch.autograd.set_detect_anomaly(True)
 num_workers = 4
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
+print(device)
     
     
 ##Load Datasets
@@ -63,17 +66,19 @@ dataloaders_adv = {
 
 
 cgan = counterGAN(device)
-D_losses, G_losses, img_list_adv, img_list_real = cgan.train(0,100,dataloaders,dataloaders_adv)
-#D_losses,G_losses,img_list = cgan.train(0,50,dataloaders)
-# cgan.visualize_images(img_list_adv, )
+D_losses, G_losses, T_losses, img_list_adv, img_list_real = cgan.train(0,100,dataloaders,dataloaders_adv)
 
-# cgan.load_state_dicts('BestcounterGAN.pth')
+# Search learning rate space
+# lrs = [10**i for i in np.random.uniform(-5,-2, 20)]
+# t_losses = []
 
-# x = next(iter(dataloaders['test']))
-# x_out = cgan.infer(x[0].to(device))
+# for lr in lrs:
 
-# imgs_grid = make_grid(x_out)
+#     cgan = counterGAN(device,lr=lr)
+#     D_losses, G_losses, T_losses, img_list_adv, img_list_real = cgan.train(0,20,dataloaders,dataloaders_adv,verbose=False)
+#     t_losses.append(T_losses[-1])
+#     print('Learning rate:',lr,'Classifer loss:',T_losses[-1])
 
-# fig = plt.figure()
-# imgs_grid = np.transpose(imgs_grid.cpu().detach().numpy(), (1,2,0))
-# plt.imsave('Img1.png',imgs_grid)
+# best_lr = lrs[t_losses.index(min(t_losses))]
+# print('Best learning rate:', best_lr)
+

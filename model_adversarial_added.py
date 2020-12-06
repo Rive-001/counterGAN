@@ -64,7 +64,7 @@ class Discriminator(nn.Module):
 
 
 class counterGAN():
-    def __init__(self,device):
+    def __init__(self,device,lr=None):
         
         self.nz = 100
         self.beta1 = 0.5
@@ -85,8 +85,13 @@ class counterGAN():
         self.netG.apply(self.weights_init)
         self.netD.apply(self.weights_init)
 
-        self.optimizerG = optim.Adam(self.netG.parameters(), lr=2e-4, betas=(self.beta1,0.999))
-        self.optimizerD = optim.Adam(self.netD.parameters(), lr=2e-4, betas=(self.beta1,0.999))
+        if lr is None:
+            lr=1e-3
+
+        self.optimizerG = optim.AdamW(self.netG.parameters(), lr=2e-3, betas=(self.beta1,0.999), weight_decay=4e-3)
+        self.optimizerD = optim.AdamW(self.netD.parameters(), lr=2e-3, betas=(self.beta1,0.999), weight_decay=4e-3)
+        self.schedulerG = optim.lr_scheduler.StepLR(self.optimizerG, step_size=10, gamma=0.5)
+        self.schedulerD = optim.lr_scheduler.StepLR(self.optimizerD, step_size=10, gamma=0.5)
         self.criterion = nn.BCELoss()
         self.criterionTarget = nn.CrossEntropyLoss()
 
@@ -117,7 +122,7 @@ class counterGAN():
 
         print('Loaded state dicts')
 
-    def train(self,init_epoch, num_epochs,dataloaders,dataloaders_adv):
+    def train(self,init_epoch, num_epochs,dataloaders,dataloaders_adv, verbose=True):
 
         G_losses = []
         D_losses = []
@@ -130,15 +135,12 @@ class counterGAN():
 
         
         for epoch in range(init_epoch,num_epochs):
-            # pbar = tqdm(total=len(dataloaders_adv['train']))
             for idx, (D, D_adv) in enumerate(zip(dataloaders['train'], dataloaders_adv['train'])):
-                # pbar.update(1)
                 self.netG.train()
                 self.netD.train()
                 
                 #Train Discriminator on adversarial image
                 self.netD.zero_grad()
-                
                 
                 
                 #adversarial images definition              
@@ -158,7 +160,8 @@ class counterGAN():
 
                 out_real= self.netD(image).view(-1)
                 loss_d_real = self.criterion(out_real,label)
-                # loss_d_real.backward()
+
+                loss_d_real.backward()
 
                 # D_x -> output of the discriminator for real images. Between (0,1)
                 D_x = out_real.mean().item()
@@ -170,7 +173,8 @@ class counterGAN():
 
                 out_generated = self.netD(generated.clone().detach()).view(-1)
                 loss_d_generated = self.criterion(out_generated,label_adv.detach())
-                # loss_d_generated.backward()
+
+                loss_d_generated.backward()
 
                 # D_G_z1 -> output of the discriminator for generated images. Between (0,1)
                 D_G_z1 = out_generated.mean().item()
@@ -178,7 +182,9 @@ class counterGAN():
                 # loss_d -> total loss of discriminator
                 loss_d = loss_d_generated+loss_d_real
 
-                # self.optimizerD.step()
+                # nn.utils.clip_grad_norm_(self.netD.parameters(), 2)
+                
+                self.optimizerD.step()
 
                 #Train Generator
                 self.netG.zero_grad()
@@ -188,30 +194,31 @@ class counterGAN():
 
                 out_generated_2 = self.netD(generated.clone()).view(-1)
                 loss_g = self.criterion(out_generated_2,label_adv)
-                # loss_g.backward(retain_graph=True)
+                loss_g.backward(retain_graph=True)
                 
                 # Calculate loss on classifier
                 out_classifier = self.netTarget(generated.clone())
                 loss_c = self.criterionTarget(out_classifier,target_labels_adv)
-                # loss_c.backward()
+                (10*loss_c).backward(retain_graph=True)
 
                 
 
                 # Calculate norm of noise generated
                 loss_p = self.criterionPerturbation(image,generated)
+                loss_p.backward()
 
                 # loss -> final loss
-                loss = loss_d+(10*loss_c)+loss_g-loss_p
-                loss.backward()
+                loss = loss_d+loss_c+loss_g+loss_p
+                # loss.backward()
                 self.optimizerG.step()
-                if idx%5==0 and idx!=0:
+                # if idx%5==0 and idx!=0:
                     # update the Discriminator every 5th step
-                    self.optimizerD.step()
-                # self.optimizerG.step()
+                    # self.optimizerD.step()
 
                 # D_G_z2 -> output of the discriminator for generated images. Between (0,1)
                 D_G_z2 = out_generated_2.mean().item()
-                if idx%50==0:
+
+                if idx%50==0 and verbose==True:
                     print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tLoss_C: %.4f\tLoss_P: %.4f\tOverall loss: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
                   % (epoch, num_epochs, idx, len(dataloaders['train']),
                      loss_d.item(), loss_g.item(), loss_c.item(), loss_p.item(), loss.item(), D_x, D_G_z1, D_G_z2))
@@ -234,12 +241,18 @@ class counterGAN():
                 self.iters += 1
 
                 
-            # pbar.close()
-            if epoch%5==0 or epoch==num_epochs-1:
+            if epoch%5==0 or epoch==num_epochs-1 and verbose==True:
                 self.visualize_images(img_list_adv,epoch,img_type='Adversarial')
                 self.visualize_images(img_list_real,epoch,img_type='Real')
-            self.save_state_dicts(f'BestcounterGAN_{epoch}.pth')
-        return D_losses,G_losses, img_list_adv, img_list_real
+
+            if verbose==True:
+                self.save_state_dicts(f'BestcounterGAN_{epoch}.pth')
+
+            # self.schedulerG.step()
+            # self.schedulerD.step()
+
+
+        return D_losses,G_losses, T_losses, img_list_adv, img_list_real
 
 
     def visualize_images(self, img_list, epoch=None, img_type='Real'):
@@ -256,19 +269,27 @@ class counterGAN():
 
         return
 
-    def inference(self, images, fixed_noise):
+    def inference(self, images, num_z=5):
         '''
         Parameters:
         images -> input images Tensor(64,3,32,32)
-        fixed_noise -> fixed noise (64,100,1,1)
+        num_z -> ensemble size
 
         Returns:
-        generated -> generated images Tensor(64,3,32,32)
+        classifications -> list of classifications of size ensemble size [list of Tensors(64)]
         '''
+        classifications = []
+        self.netG.eval()
+        self.netTarget.eval()
+        with torch.no_grad():
+            for i in range(num_z):
+                z = torch.randn(64,100,1,1, device=self.device)
+                generated = (self.netG(z)+images)
+                classification = torch.argmax(torch.softmax(self.netTarget(generated), dim=-1), dim=-1)
+                classifications.append(classification.detach().cpu())
 
-        generated = (self.netG(self.fixed_noise)+images).detach().cpu()
 
-        return generated
+        return classifications
 
 
         

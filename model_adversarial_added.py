@@ -184,7 +184,8 @@ class counterGAN():
 
                 # nn.utils.clip_grad_norm_(self.netD.parameters(), 2)
                 
-                self.optimizerD.step()
+                if idx%10==0:
+                    self.optimizerD.step()
 
                 #Train Generator
                 self.netG.zero_grad()

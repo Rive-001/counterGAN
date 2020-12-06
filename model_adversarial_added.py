@@ -16,10 +16,12 @@ class Generator(nn.Module):
         self.main = nn.Sequential(
             #Output size: (64,16,16)
             nn.ConvTranspose2d(nz,64,16,1,bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=False),
 
             #Output size: (3,32,32)
             nn.ConvTranspose2d(64,3,17,1,bias=False),
+            nn.BatchNorm2d(3),
             # nn.ReLU(inplace=False),
 
             #Output size: (64,25,25)
@@ -43,10 +45,12 @@ class Discriminator(nn.Module):
             
             #Output size: (64,11,11)
             nn.Conv2d(3,64,11,2),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2, inplace=False),
 
             #Output size: (128,1,1)
             nn.Conv2d(64,128,11,2),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2, inplace=False),
 
             #Output size: (256,1,1)
@@ -90,9 +94,10 @@ class counterGAN():
 
         self.optimizerG = optim.AdamW(self.netG.parameters(), lr=2e-3, betas=(self.beta1,0.999), weight_decay=4e-3)
         self.optimizerD = optim.AdamW(self.netD.parameters(), lr=2e-3, betas=(self.beta1,0.999), weight_decay=4e-3)
-        self.schedulerG = optim.lr_scheduler.StepLR(self.optimizerG, step_size=10, gamma=0.5)
-        self.schedulerD = optim.lr_scheduler.StepLR(self.optimizerD, step_size=10, gamma=0.5)
-        self.criterion = nn.BCELoss()
+        self.schedulerG = optim.lr_scheduler.StepLR(self.optimizerG, step_size=3, gamma=0.93)
+        self.schedulerD = optim.lr_scheduler.StepLR(self.optimizerD, step_size=3, gamma=0.93)
+        # self.criterion = nn.BCELoss()
+        self.criterion = nn.MSELoss()
         self.criterionTarget = nn.CrossEntropyLoss()
 
         # criterionPerturbation -> norm of the generated noise
@@ -157,13 +162,15 @@ class counterGAN():
                 # label -> target label to use for real images while training discriminator
                 label = torch.full((batch_size,),self.real_label,dtype=torch.float,device=self.device)
                 
-
-                out_real= self.netD(image).view(-1)
+                gaus_noise = torch.randn(*image.size(), device=self.device)
+                out_real= self.netD(image+gaus_noise).view(-1)
                 loss_d_real = self.criterion(out_real,label)
 
                 loss_d_real.backward()
 
                 # D_x -> output of the discriminator for real images. Between (0,1)
+                # D_x = out_real.mean()
+                # D_x.backward()
                 D_x = out_real.mean().item()
 
                 #Train Discriminator on generated images
@@ -177,6 +184,8 @@ class counterGAN():
                 loss_d_generated.backward()
 
                 # D_G_z1 -> output of the discriminator for generated images. Between (0,1)
+                # D_G_z1 = out_generated.mean()
+                # (-1*D_G_z1).backward()
                 D_G_z1 = out_generated.mean().item()
 
                 # loss_d -> total loss of discriminator
@@ -196,6 +205,9 @@ class counterGAN():
                 out_generated_2 = self.netD(generated.clone()).view(-1)
                 loss_g = self.criterion(out_generated_2,label_adv)
                 loss_g.backward(retain_graph=True)
+
+                # D_G_z2 = out_generated_2.mean()
+                # D_G_z2.backward(retain_graph=True)
                 
                 # Calculate loss on classifier
                 out_classifier = self.netTarget(generated.clone())
@@ -249,8 +261,8 @@ class counterGAN():
             if verbose==True:
                 self.save_state_dicts(f'BestcounterGAN_{epoch}.pth')
 
-            # self.schedulerG.step()
-            # self.schedulerD.step()
+            self.schedulerG.step()
+            self.schedulerD.step()
 
 
         return D_losses,G_losses, T_losses, img_list_adv, img_list_real

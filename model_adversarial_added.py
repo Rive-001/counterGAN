@@ -37,7 +37,42 @@ class Generator(nn.Module):
         x = self.main(x)
         return x
 
+class GeneratorLinear(nn.Module):
+    def __init__(self, nz):
+        super(GeneratorLinear,self).__init__()
+        self.main = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(100, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Linear(512,1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Linear(1024,32*32*3),
+            #Output size: (64,16,16)
+            # nn.ConvTranspose2d(nz,64,16,1,bias=False),
+            # nn.BatchNorm2d(64),
+            # nn.ReLU(inplace=False),
 
+            # #Output size: (3,32,32)
+            # nn.ConvTranspose2d(64,3,17,1,bias=False),
+            # nn.BatchNorm2d(3),
+            # nn.ReLU(inplace=False),
+
+            #Output size: (64,25,25)
+            # nn.ConvTranspose2d(128,64,9,1,bias=False),
+            # nn.ReLU(inplace=False),
+
+            #Output size: (3,32,32)
+            # nn.ConvTranspose2d(64,3,8,1,bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self,x):
+        x = x.reshape(-1,100)
+        x = self.main(x)
+        x = x.reshape(-1,3,32,32)
+        return x
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
@@ -66,9 +101,47 @@ class Discriminator(nn.Module):
         x = self.main(x)
         return x
 
+class DiscriminatorLinear(nn.Module):
+    def __init__(self):
+        super(DiscriminatorLinear, self).__init__()
+        self.main = nn.Sequential(
+            # in (N,3,32,32)
+            nn.Linear(32*32*3, 1024),
+            nn.BatchNorm1d(1024),
+            nn.LeakyReLU(0.2),
+            nn.Linear(1024,512),
+            nn.BatchNorm1d(512),
+            nn.LeakyReLU(0.2),
+            nn.Linear(512, 128),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(0.2),
+            #Output size: (64,11,11)
+            # nn.Conv2d(3,64,11,2),
+            # nn.BatchNorm2d(64),
+            # nn.LeakyReLU(0.2, inplace=False),
+
+            # #Output size: (128,1,1)
+            # nn.Conv2d(64,128,11,2),
+            # nn.BatchNorm2d(128),
+            # nn.LeakyReLU(0.2, inplace=False),
+
+            #Output size: (256,1,1)
+            # nn.Conv2d(128,256,5,2),
+            # nn.LeakyReLU(0.2, inplace=False),
+
+            # nn.Flatten(),
+            nn.Linear(128,1),
+            nn.Sigmoid()
+        )
+
+    def forward(self,x):
+        x = self.main(x.reshape(x.shape[0],-1))
+        return x
+
+
 
 class counterGAN():
-    def __init__(self,device,lr=None):
+    def __init__(self,device,lr=None, linear=False):
         
         self.nz = 100
         self.beta1 = 0.5
@@ -77,9 +150,12 @@ class counterGAN():
         self.L = 100
         self.device = device
         self.iters = 0
-
-        self.netG = Generator(self.nz).to(self.device)
-        self.netD = Discriminator().to(self.device)
+        if linear == True:
+            self.netG = GeneratorLinear(self.nz).to(self.device)
+            self.netD = DiscriminatorLinear().to(self.device)
+        else:
+            self.netG = Generator(self.nz).to(self.device)
+            self.netD = Discriminator().to(self.device)
         self.netTarget = VGG('VGG16').to(self.device)
         self.netTarget.load_state_dict(torch.load('BestClassifierModel.pth',map_location=self.device))
 
@@ -127,7 +203,7 @@ class counterGAN():
 
         print('Loaded state dicts')
 
-    def train(self,init_epoch, num_epochs,dataloaders,dataloaders_adv, verbose=True):
+    def train(self,init_epoch, num_epochs,dataloaders,dataloaders_adv, gsm_enabled=False,verbose=True):
 
         G_losses = []
         D_losses = []
@@ -175,7 +251,10 @@ class counterGAN():
 
                 #Train Discriminator on generated images
                 noise = torch.randn(batch_size,self.nz,1,1,device=self.device)
-                generated = torch.sign(self.netG(noise))*epsilon+image_adv
+                if gsm_enabled:
+                    generated = torch.sign(self.netG(noise))*epsilon+image_adv
+                else:
+                    generated = self.netG(noise)+image_adv
                 label_adv = torch.full((batch_size,),self.fake_label,dtype=torch.float,device=self.device)
 
                 out_generated = self.netD(generated.clone().detach()).view(-1)
@@ -245,11 +324,17 @@ class counterGAN():
                 # Check how the generator is doing by saving G's output on fixed_noise
                 if (self.iters % 50 == 0) or ((epoch == num_epochs-1) and (idx == len(dataloaders['train'])-1)):
                     with torch.no_grad():
-                        generated = (torch.sign(self.netG(self.fixed_noise))*epsilon+image_adv[:64]).detach().cpu()
+                        if gsm_enabled:
+                            generated = (torch.sign(self.netG(self.fixed_noise))*epsilon+image_adv[:64]).detach().cpu()
+                        else:
+                            generated = (self.netG(self.fixed_noise)+image_adv[:64]).detach().cpu()
                         img_list_adv.append(vutils.make_grid(generated, padding=2, normalize=True))
                     # TODO Visualize
                     with torch.no_grad():
-                        generated = (torch.sign(self.netG(self.fixed_noise))*epsilon+image[:64]).detach().cpu()
+                        if gsm_enabled:
+                            generated = (torch.sign(self.netG(self.fixed_noise))*epsilon+image[:64]).detach().cpu()
+                        else:
+                            generated = (self.netG(self.fixed_noise)+image[:64]).detach().cpu()
                         img_list_real.append(vutils.make_grid(generated, padding=2, normalize=True))
                 self.iters += 1
 
@@ -263,7 +348,7 @@ class counterGAN():
             self.schedulerD.step()
 
             if epoch%2!=0 and verbose==True:
-                self.save_state_dicts(f'BestcounterGAN_{epoch}.pth')
+                self.save_state_dicts(f'Linear_BestcounterGAN_{epoch}.pth')
         return D_losses,G_losses, T_losses, img_list_adv, img_list_real
 
 
@@ -277,7 +362,7 @@ class counterGAN():
         plt.axis("off")
         plt.title("Generated Images {}".format(img_type))
         plt.imshow(np.transpose(img_list[-1],(1,2,0)))
-        plt.savefig('./images/Image_{}_{}.png'.format(epoch,img_type))
+        plt.savefig('./linear_images/Image_{}_{}.png'.format(epoch,img_type))
 
         return
 
@@ -304,7 +389,9 @@ class counterGAN():
         return classifications
 
 
-        
+# On adv and real dataset:
 
+# Image, Groundtruth, Prediction, CounterGanPrediction
+# img, class, forward_pass_on_image, forward_pass_on_image_with_noise
 
 

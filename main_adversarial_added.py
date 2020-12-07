@@ -64,9 +64,9 @@ dataloaders_adv = {
 
 
 
-
-cgan = counterGAN(device)
-D_losses, G_losses, T_losses, img_list_adv, img_list_real = cgan.train(0,100,dataloaders,dataloaders_adv)
+NUM_EPOCHS = 200
+cgan = counterGAN(device, linear=True)
+D_losses, G_losses, T_losses, img_list_adv, img_list_real = cgan.train(0,NUM_EPOCHS,dataloaders,dataloaders_adv)
 
 # Search learning rate space
 # lrs = [10**i for i in np.random.uniform(-5,-2, 20)]

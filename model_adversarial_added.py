@@ -137,7 +137,7 @@ class counterGAN():
         img_list_adv = []
         img_list_real = []
         self.iters = 0
-
+        epsilon = 0.4
         
         for epoch in range(init_epoch,num_epochs):
             for idx, (D, D_adv) in enumerate(zip(dataloaders['train'], dataloaders_adv['train'])):
@@ -175,7 +175,7 @@ class counterGAN():
 
                 #Train Discriminator on generated images
                 noise = torch.randn(batch_size,self.nz,1,1,device=self.device)
-                generated = self.netG(noise)+image_adv
+                generated = torch.sign(self.netG(noise))*epsilon+image_adv
                 label_adv = torch.full((batch_size,),self.fake_label,dtype=torch.float,device=self.device)
 
                 out_generated = self.netD(generated.clone().detach()).view(-1)
@@ -245,11 +245,11 @@ class counterGAN():
                 # Check how the generator is doing by saving G's output on fixed_noise
                 if (self.iters % 50 == 0) or ((epoch == num_epochs-1) and (idx == len(dataloaders['train'])-1)):
                     with torch.no_grad():
-                        generated = (self.netG(self.fixed_noise)+image_adv[:64]).detach().cpu()
+                        generated = (torch.sign(self.netG(self.fixed_noise))*epsilon+image_adv[:64]).detach().cpu()
                         img_list_adv.append(vutils.make_grid(generated, padding=2, normalize=True))
                     # TODO Visualize
                     with torch.no_grad():
-                        generated = (self.netG(self.fixed_noise)+image[:64]).detach().cpu()
+                        generated = (torch.sign(self.netG(self.fixed_noise))*epsilon+image[:64]).detach().cpu()
                         img_list_real.append(vutils.make_grid(generated, padding=2, normalize=True))
                 self.iters += 1
 
@@ -258,13 +258,12 @@ class counterGAN():
                 self.visualize_images(img_list_adv,epoch,img_type='Adversarial')
                 self.visualize_images(img_list_real,epoch,img_type='Real')
 
-            if verbose==True:
-                self.save_state_dicts(f'BestcounterGAN_{epoch}.pth')
 
             self.schedulerG.step()
             self.schedulerD.step()
 
-
+            if epoch%2!=0 and verbose==True:
+                self.save_state_dicts(f'BestcounterGAN_{epoch}.pth')
         return D_losses,G_losses, T_losses, img_list_adv, img_list_real
 
 

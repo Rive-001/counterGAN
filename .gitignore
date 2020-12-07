@@ -4,3 +4,6 @@ images/
 baseline_adv2/
 BestcounterGAN*
 baseline*
+__pycache__/
+images*
+*.log

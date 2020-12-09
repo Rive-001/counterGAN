@@ -11,6 +11,17 @@ import numpy as np
 from tqdm import tqdm
 
 
+def get_seed(image=None, z_size=100, device="cuda"):
+    # return torch.randn(image.shape[0], z_size, 1, 1, device=device)
+    """Return seed that is non-differentiable representation of image"""
+    if image is None:
+        return torch.randn(z_size, requires_grad=False, device=device)
+    else:
+        vector = (1.0 * (image > 0.5)).reshape(image.shape[0], 1, -1)
+        vector = torch.nn.functional.interpolate(vector, size=z_size)
+        return vector.squeeze(1)
+
+
 class Generator(nn.Module):
     def __init__(self, nz):
         super(Generator, self).__init__()
@@ -32,6 +43,7 @@ class Generator(nn.Module):
         )
 
     def forward(self, x):
+        x = x.unsqueeze(-1).unsqueeze(-1)
         x = self.main(x)
         return x
 
@@ -158,7 +170,10 @@ class counterGAN:
             self.netD = Discriminator().to(self.device)
         self.netTarget = VGG("VGG16").to(self.device)
         self.netTarget.load_state_dict(
-            torch.load("BestClassifierModel.pth", map_location=self.device)
+            torch.load(
+                "/home/stars/Code/tarang/idl_proj/counterGAN/BestClassifierModel.pth",
+                map_location=self.device,
+            )
         )
 
         # fixed_noise -> stores fixed generator seed for inference
@@ -192,8 +207,8 @@ class counterGAN:
         self.schedulerD = optim.lr_scheduler.StepLR(
             self.optimizerD, step_size=3, gamma=0.93
         )
-        # self.criterion = nn.BCELoss()
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.BCELoss()
+        # self.criterion = nn.MSELoss()
         self.criterionTarget = nn.CrossEntropyLoss()
 
         # criterionPerturbation -> norm of the generated noise
@@ -293,7 +308,8 @@ class counterGAN:
                 D_x = out_real.mean().item()
 
                 # Train Discriminator on generated images
-                noise = torch.randn(batch_size, self.nz, 1, 1, device=self.device)
+                # noise = torch.randn(batch_size, self.nz, 1, 1, device=self.device)
+                noise = get_seed(image, z_size=self.nz)
                 if gsm_enabled:
                     generated = torch.sign(self.netG(noise)) * epsilon + image_adv
                 else:
@@ -414,7 +430,7 @@ class counterGAN:
                             )
                         else:
                             generated = (
-                                (self.netG(self.fixed_noise) + image_adv[:64])
+                                (self.netG(get_seed(image_adv[:64])) + image_adv[:64])
                                 .detach()
                                 .cpu()
                             )
@@ -434,7 +450,7 @@ class counterGAN:
                             )
                         else:
                             generated = (
-                                (self.netG(self.fixed_noise) + image[:64])
+                                (self.netG(get_seed(image[:64])) + image[:64])
                                 .detach()
                                 .cpu()
                             )
@@ -476,7 +492,7 @@ class counterGAN:
 
         return
 
-    def inference(self, images, num_z=5):
+    def inference(self, images, num_z=5, batch_size=64):
         """
         Parameters:
         images -> input images Tensor(64,3,32,32)
@@ -486,18 +502,27 @@ class counterGAN:
         classifications -> list of classifications of size ensemble size [list of Tensors(64)]
         """
         classifications = []
+        orig_classification = None
         self.netG.eval()
         self.netTarget.eval()
         with torch.no_grad():
+            orig_classification = (
+                torch.argmax(torch.softmax(self.netTarget(images), dim=-1), dim=-1)
+                .detach()
+                .squeeze()
+                .cpu()
+                .numpy()
+            )
             for i in range(num_z):
-                z = torch.randn(64, 100, 1, 1, device=self.device)
+                # z = torch.randn(batch_size, 100, 1, 1, device=self.device)
+                z = get_seed(images)
                 generated = self.netG(z) + images
                 classification = torch.argmax(
                     torch.softmax(self.netTarget(generated), dim=-1), dim=-1
                 )
-                classifications.append(classification.detach().cpu())
+                classifications.append(classification.detach().squeeze().cpu().numpy())
 
-        return classifications
+        return np.array(classifications), orig_classification
 
 
 # On adv and real dataset:

@@ -11,7 +11,6 @@ import numpy as np
 from tqdm import tqdm
 
 
-
 def get_gradient(model, real, fake, epsilon):
     """
     Return gradient of the model's scores with respect to mixed real and fake images.
@@ -27,6 +26,16 @@ def get_gradient(model, real, fake, epsilon):
     )[0]
 
     return gradient
+
+
+def get_seed(image=None, z_size=100, device="cuda"):
+    """Return seed that is non-differentiable representation of image"""
+    if image is None:
+        return torch.randn(z_size, requires_grad=False, device=device)
+    else:
+        vector = (1.0 * (image > 0.5)).reshape(image.shape[0], 1, -1)
+        vector = torch.nn.functional.interpolate(vector, size=z_size)
+        return vector.squeeze(1)
 
 
 def grad_penalty(gradient):
@@ -187,7 +196,10 @@ class counterGAN:
             self.netD = Discriminator().to(self.device)
         self.netTarget = VGG("VGG16").to(self.device)
         self.netTarget.load_state_dict(
-            torch.load("BestClassifierModel.pth", map_location=self.device)
+            torch.load(
+                "/home/stars/Code/tarang/idl_proj/counterGAN/BestClassifierModel.pth",
+                map_location=self.device,
+            )
         )
 
         # fixed_noise -> stores fixed generator seed for inference
@@ -274,7 +286,7 @@ class counterGAN:
         img_list_adv = []
         img_list_real = []
         self.iters = 0
-        epsilon = 0.4
+        # epsilon = 0.4
 
         for epoch in range(init_epoch, num_epochs):
             for idx, (D, D_adv) in enumerate(
@@ -323,6 +335,8 @@ class counterGAN:
 
                 # Train Discriminator on generated images
                 noise = torch.randn(batch_size, self.nz, 1, 1, device=self.device)
+                noise = get_seed(image, z_size=self.nz)
+                # non differential method of seeding the noise - histogram
                 if gsm_enabled:
                     generated = torch.sign(self.netG(noise)) * epsilon + image_adv
                 else:
@@ -337,21 +351,24 @@ class counterGAN:
                 out_generated = self.netD(generated.clone().detach()).view(-1)
                 # loss_d_generated = self.criterion(out_generated, label_adv.detach())
 
-
-                #WGAN HERE
-                epsilon = torch.rand(len(image), 1, 1, 1, device='cuda', requires_grad=True)
+                # WGAN HERE
+                epsilon = torch.rand(
+                    len(image), 1, 1, 1, device="cuda", requires_grad=True
+                )
 
                 gradient = get_gradient(self.netD, image, generated.detach(), epsilon)
 
                 gp = grad_penalty(gradient)
                 c_lambda = 10
 
-                loss_d = -torch.mean(out_real) + torch.mean(out_generated) + c_lambda*gp
+                loss_d = (
+                    -torch.mean(out_real) + torch.mean(out_generated) + c_lambda * gp
+                )
 
                 loss_d.backward(retain_graph=True)
 
-                # if idx % 10 == 0:
-                self.optimizerD.step()
+                if idx % 10 == 0:
+                    self.optimizerD.step()
 
                 # loss_d_generated.backward()
 
@@ -364,7 +381,6 @@ class counterGAN:
                 # loss_d = loss_d_generated + loss_d_real
 
                 # nn.utils.clip_grad_norm_(self.netD.parameters(), 2)
-
 
                 # Train Generator
                 self.netG.zero_grad()
@@ -379,7 +395,7 @@ class counterGAN:
 
                 out_generated_2 = self.netD(generated.clone()).view(-1)
                 # loss_g = self.criterion(out_generated_2, label_adv)
-                #WGAN
+                # WGAN
                 loss_g = -torch.mean(out_generated_2)
                 loss_g.backward(retain_graph=True)
 
@@ -398,6 +414,7 @@ class counterGAN:
                 # loss -> final loss
                 loss = loss_d + loss_c + loss_g + loss_p
                 # loss.backward()
+
                 self.optimizerG.step()
                 # if idx%5==0 and idx!=0:
                 # update the Discriminator every 5th step
@@ -413,14 +430,14 @@ class counterGAN:
                             "Loss_G": loss_g.item(),
                             "Noise_norm": loss_p.item(),
                             "Real_img_Disc_Dx": D_x,
-                            "Generated_img_Disc_DG_z1": D_G_z1,
-                            "Generated_img_Disc_after_DG_z2": D_G_z2,
+                            # "Generated_img_Disc_DG_z1": D_G_z1,
+                            # "Generated_img_Disc_after_DG_z2": D_G_z2,
                             "epoch": epoch,
                         }
                     )
                 if idx % 50 == 0 and verbose == True:
                     print(
-                        "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tLoss_C: %.4f\tLoss_P: %.4f\tOverall loss: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
+                        "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tLoss_C: %.4f\tLoss_P: %.4f\tOverall loss: %.4f\tD(x): %.4f\tD(G(z)):"
                         % (
                             epoch,
                             num_epochs,
@@ -432,8 +449,8 @@ class counterGAN:
                             loss_p.item(),
                             loss.item(),
                             D_x,
-                            D_G_z1,
-                            D_G_z2,
+                            # D_G_z1,
+                            # D_G_z2,
                         )
                     )
 
@@ -458,8 +475,13 @@ class counterGAN:
                                 .cpu()
                             )
                         else:
+                            # generated = (
+                            #     (self.netG(self.fixed_noise) + image_adv[:64])
+                            #     .detach()
+                            #     .cpu()
+                            # )
                             generated = (
-                                (self.netG(self.fixed_noise) + image_adv[:64])
+                                (self.netG(get_seed(image_adv[:64])) + image_adv[:64])
                                 .detach()
                                 .cpu()
                             )
@@ -478,8 +500,13 @@ class counterGAN:
                                 .cpu()
                             )
                         else:
+                            # generated = (
+                            #     (self.netG(self.fixed_noise) + image[:64])
+                            #     .detach()
+                            #     .cpu()
+                            # )
                             generated = (
-                                (self.netG(self.fixed_noise) + image[:64])
+                                (self.netG(get_seed(image[:64])) + image[:64])
                                 .detach()
                                 .cpu()
                             )
@@ -521,7 +548,7 @@ class counterGAN:
 
         return
 
-    def inference(self, images, num_z=5):
+    def inference(self, images, num_z=5, batch_size=64):
         """
         Parameters:
         images -> input images Tensor(64,3,32,32)
@@ -531,18 +558,26 @@ class counterGAN:
         classifications -> list of classifications of size ensemble size [list of Tensors(64)]
         """
         classifications = []
+        orig_classification = None
         self.netG.eval()
         self.netTarget.eval()
         with torch.no_grad():
+            orig_classification = (
+                torch.argmax(torch.softmax(self.netTarget(images), dim=-1), dim=-1)
+                .detach()
+                .squeeze()
+                .cpu()
+                .numpy()
+            )
             for i in range(num_z):
-                z = torch.randn(64, 100, 1, 1, device=self.device)
+                z = torch.randn(batch_size, 100, 1, 1, device=self.device)
                 generated = self.netG(z) + images
                 classification = torch.argmax(
                     torch.softmax(self.netTarget(generated), dim=-1), dim=-1
                 )
-                classifications.append(classification.detach().cpu())
+                classifications.append(classification.detach().squeeze().cpu().numpy())
 
-        return classifications
+        return np.array(classifications), orig_classification
 
 
 # On adv and real dataset:

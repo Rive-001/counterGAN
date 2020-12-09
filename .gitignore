@@ -7,4 +7,5 @@ baseline*
 __pycache__/
 images*
 *.log
+wandb
 wandbkey

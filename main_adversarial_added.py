@@ -7,18 +7,23 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torchvision.utils import make_grid
 import torch.utils.data as data
+
 from model_adversarial_added import *
+
+# from wgan_model_adversarial_added import *
+
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import os
 
+experiment_name = "linear_bce_randomnoise_exp6"
 USE_WANDB = True
 if USE_WANDB:
     import wandb
 
     os.environ["WANDB_API_KEY"] = open("wandbkey").read()
-    wandb.init(project="IDL_PROJECT_COUNTERGAN")
+    wandb.init(project="IDL_PROJECT_COUNTERGAN", name=experiment_name)
     params = wandb.config
     wandb.save("main_adversarial_added.py")
     wandb.save("model_adversarial_added.py")
@@ -29,7 +34,7 @@ params["round_name"] = "round0"
 params["batch_size"] = 784  # * 6  # 256 * 3
 params["lr"] = 1e-3
 params["momentum"] = 0.9
-params["epochs"] = 200
+params["epochs"] = 100
 
 # torch.autograd.set_detect_anomaly(True)
 num_workers = 4
@@ -100,6 +105,30 @@ else:
 D_losses, G_losses, T_losses, img_list_adv, img_list_real = cgan.train(
     0, NUM_EPOCHS, dataloaders, dataloaders_adv
 )
+
+import accuracy
+
+adv_groundtruth, adv_actual_preds, adv_defense_preds = accuracy.accuracy(
+    dataloaders_adv, cgan, BATCH_SIZE
+)
+real_groundtruth, real_actual_preds, real_defense_preds = accuracy.accuracy(
+    dataloaders, cgan, BATCH_SIZE
+)
+
+import pandas as pd
+
+realdf = pd.DataFrame(columns=["gt_value", "classifier", "defense_pred"])
+realdf.gt_value = real_groundtruth
+realdf.classifier = real_actual_preds
+realdf.defense_pred = real_defense_preds
+
+advdf = pd.DataFrame(columns=["gt_value", "classifier", "defense_pred"])
+advdf.gt_value = adv_groundtruth
+advdf.classifier = adv_actual_preds
+advdf.defense_pred = adv_defense_preds
+
+realdf.to_csv(f"{experiment_name}_counter_gan_real_pred.csv")
+advdf.to_csv(f"{experiment_name}_counter_gan_adv_pred.csv")
 
 # Search learning rate space
 # lrs = [10**i for i in np.random.uniform(-5,-2, 20)]
